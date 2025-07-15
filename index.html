@@ -2,210 +2,202 @@
 <html lang="en">
 <head>
   <meta charset="UTF-8">
-  <title>Solana Wallet Signature & Token Account</title>
-  <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <script src="https://unpkg.com/@solana/web3.js@1.70.1/lib/index.iife.min.js"></script>
+  <title>Solana Token Manager</title>
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <script src="https://unpkg.com/@solana/web3.js@latest/lib/index.iife.js"></script>
+  <script src="https://unpkg.com/@solana/spl-token@latest/lib/index.iife.js"></script>
   <style>
     body {
-      font-family: 'Segoe UI', sans-serif;
-      background: #f9f9f9;
-      margin: 0;
-      padding: 0;
-      display: flex;
-      justify-content: center;
-      align-items: flex-start;
-      min-height: 100vh;
+      font-family: sans-serif;
+      margin: 1rem;
+      background: #f2f2f2;
+      color: #333;
     }
-    .container {
-      max-width: 500px;
-      background: #fff;
-      padding: 2rem;
-      margin: 2rem;
-      border-radius: 12px;
-      box-shadow: 0 0 10px rgba(0, 0, 0, 0.1);
-    }
-    h2 {
-      text-align: center;
-      color: #14f195;
-    }
-    input, button {
-      width: 100%;
-      padding: 0.75rem;
-      margin: 0.5rem 0;
-      font-size: 1rem;
-      border-radius: 8px;
-      border: 1px solid #ccc;
-    }
+
     button {
-      background-color: #9945FF;
+      padding: 10px 16px;
+      margin: 5px 0;
+      background: #6200ea;
       color: white;
       border: none;
+      border-radius: 8px;
       cursor: pointer;
     }
+
     button:hover {
-      background-color: #7a36cc;
+      background: #3700b3;
     }
-    #signature {
-      background: #f6f6f6;
-      padding: 0.75rem;
-      border-radius: 8px;
-      margin-top: 1rem;
-      font-size: 0.9rem;
-      word-break: break-word;
+
+    input {
+      padding: 8px;
+      margin-bottom: 10px;
+      width: 100%;
+      box-sizing: border-box;
+    }
+
+    .token-card {
+      background: white;
+      border-radius: 10px;
+      padding: 12px;
+      margin-bottom: 12px;
+      box-shadow: 0 2px 6px rgba(0, 0, 0, 0.1);
+    }
+
+    .token-actions {
+      margin-top: 8px;
+    }
+
+    @media (max-width: 600px) {
+      h2 {
+        font-size: 1.4rem;
+      }
+
+      button {
+        width: 100%;
+      }
     }
   </style>
 </head>
 <body>
-  <div class="container">
-    <h2>🦭 Solana Wallet App</h2>
+  <h2>Solana Token Manager</h2>
+  <button onclick="connectWallet()">Connect Phantom Wallet</button>
+  <p id="wallet-address">Wallet not connected</p>
 
-    <div id="walletSection">
-      <button id="connectBtn">Connect Wallet</button>
-    </div>
-
-    <input type="text" id="messageInput" placeholder="Enter message to sign..." />
-    <button id="signBtn">Sign Message</button>
-
-    <div>
-      <button id="createTokenBtn">Create USDC Token Account</button>
-    </div>
-
-    <div id="signatureContainer">
-      <h4>Signed Message:</h4>
-      <div id="signature"></div>
-    </div>
-  </div>
+  <h3>My Tokens</h3>
+  <div id="token-list">Connect wallet to view tokens</div>
 
   <script>
+    const {
+      Connection,
+      PublicKey,
+      clusterApiUrl,
+      Transaction,
+    } = solanaWeb3;
+
+    const {
+      getParsedAccountInfo,
+      getAccount,
+      getAssociatedTokenAddress,
+      closeAccount,
+      burn,
+    } = splToken;
+
+    const connection = new Connection(clusterApiUrl('mainnet-beta'), "confirmed");
     let wallet = null;
-    let connectedAddress = '';
-    const connection = new solanaWeb3.Connection(solanaWeb3.clusterApiUrl('mainnet-beta'), 'confirmed');
-
-    const messageInput = document.getElementById("messageInput");
-    const signBtn = document.getElementById("signBtn");
-    const signatureDiv = document.getElementById("signature");
-
-    const USDC_MINT = new solanaWeb3.PublicKey("EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v");
-
-    function shortenAddress(addr) {
-      return addr.slice(0, 4) + ".." + addr.slice(-4);
-    }
-
-    function renderConnectedDropdown() {
-      const walletSection = document.getElementById("walletSection");
-      const shortAddr = shortenAddress(connectedAddress);
-      walletSection.innerHTML = `
-        <div>
-          <button onclick="toggleDropdown()">🔗 ${shortAddr}</button>
-          <div id="dropdown" style="margin-top: 0.5rem;">
-            <button onclick="copyAddress()">Copy Address</button>
-            <button onclick="disconnectWallet()">Disconnect</button>
-          </div>
-        </div>
-      `;
-    }
-
-    function copyAddress() {
-      navigator.clipboard.writeText(connectedAddress)
-        .then(() => alert("Address copied!"))
-        .catch(err => alert("Copy failed: " + err.message));
-    }
-
-    function toggleDropdown() {
-      const dd = document.getElementById("dropdown");
-      dd.style.display = dd.style.display === "none" ? "block" : "none";
-    }
 
     async function connectWallet() {
       if (window.solana && window.solana.isPhantom) {
         try {
           const resp = await window.solana.connect();
-          wallet = resp;
-          connectedAddress = wallet.publicKey.toString();
-          renderConnectedDropdown();
+          wallet = window.solana;
+          document.getElementById("wallet-address").textContent = "Connected: " + resp.publicKey.toString();
+          fetchTokenAccounts();
         } catch (err) {
-          alert("Connection failed: " + err.message);
+          alert("Wallet connection failed.");
         }
       } else {
-        alert("Phantom Wallet not detected!");
+        alert("Please install Phantom Wallet!");
       }
     }
 
-    function disconnectWallet() {
-      window.solana.disconnect();
-      wallet = null;
-      connectedAddress = '';
-      document.getElementById("walletSection").innerHTML = `<button id="connectBtn">Connect Wallet</button>`;
-      document.getElementById("connectBtn").onclick = connectWallet;
-    }
+    async function fetchTokenAccounts() {
+      const tokenListDiv = document.getElementById("token-list");
+      tokenListDiv.innerHTML = "Loading tokens...";
 
-    async function signMessage() {
-      if (!wallet) return alert("Please connect wallet first.");
-      const message = messageInput.value;
-      if (!message) return alert("Enter a message.");
-
-      const encodedMessage = new TextEncoder().encode(message);
-      try {
-        const { signature } = await window.solana.signMessage(encodedMessage, "utf8");
-        const hex = [...signature].map(x => x.toString(16).padStart(2, "0")).join("");
-        signatureDiv.textContent = hex;
-      } catch (err) {
-        alert("Signing failed: " + err.message);
-      }
-    }
-
-    async function createTokenAccount() {
-      if (!wallet) return alert("Connect your wallet first.");
-      const userPubkey = new solanaWeb3.PublicKey(connectedAddress);
-
-      const ata = await solanaWeb3.PublicKey.findProgramAddress(
-        [
-          userPubkey.toBuffer(),
-          solanaWeb3.TOKEN_PROGRAM_ID.toBuffer(),
-          USDC_MINT.toBuffer(),
-        ],
-        new solanaWeb3.PublicKey("ATokenGPvbdGVxr1NnbYx2sAa8fzBDx8c3mop6NsgSEo")
-      );
-
-      const ataAddress = ata[0];
-      const account = await connection.getAccountInfo(ataAddress);
-
-      if (account) {
-        alert("USDC token account already exists.");
-        return;
-      }
-
-      const ix = solanaWeb3.SystemProgram.createAccount({
-        fromPubkey: userPubkey,
-        newAccountPubkey: ataAddress,
-        lamports: await solanaWeb3.Token.getMinBalanceRentForExemptAccount(connection),
-        space: 165,
-        programId: solanaWeb3.TOKEN_PROGRAM_ID,
+      const accounts = await connection.getParsedTokenAccountsByOwner(wallet.publicKey, {
+        programId: new PublicKey("TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA")
       });
 
-      const tx = new solanaWeb3.Transaction().add(ix);
-      tx.feePayer = userPubkey;
-      tx.recentBlockhash = (await connection.getLatestBlockhash()).blockhash;
+      tokenListDiv.innerHTML = "";
+      for (const { pubkey, account } of accounts.value) {
+        const info = account.data.parsed.info;
+        const tokenAmount = info.tokenAmount.uiAmount;
+        const mint = info.mint;
 
-      try {
-        const signedTx = await window.solana.signTransaction(tx);
-        const txid = await connection.sendRawTransaction(signedTx.serialize());
-        alert("Token account created! TXID: " + txid);
-      } catch (err) {
-        alert("Transaction failed: " + err.message);
+        const tokenDiv = document.createElement("div");
+        tokenDiv.className = "token-card";
+        tokenDiv.innerHTML = `
+          <strong>Token:</strong> ${mint}<br>
+          <strong>Balance:</strong> ${tokenAmount}
+          <div class="token-actions"></div>
+        `;
+
+        const actionDiv = tokenDiv.querySelector(".token-actions");
+
+        // Burn Button (if balance > 0)
+        if (tokenAmount > 0) {
+          const burnBtn = document.createElement("button");
+          burnBtn.textContent = "Burn Token";
+          burnBtn.onclick = () => burnToken(mint, pubkey, tokenAmount);
+          actionDiv.appendChild(burnBtn);
+        }
+
+        // Close Button (only if balance === 0)
+        if (tokenAmount === 0) {
+          const closeBtn = document.createElement("button");
+          closeBtn.textContent = "Close Account";
+          closeBtn.onclick = () => closeTokenAccount(pubkey);
+          actionDiv.appendChild(closeBtn);
+        }
+
+        tokenListDiv.appendChild(tokenDiv);
       }
     }
 
-    document.getElementById("connectBtn").onclick = connectWallet;
-    signBtn.onclick = signMessage;
-    document.getElementById("createTokenBtn").onclick = createTokenAccount;
+    async function burnToken(mintAddress, tokenAccountPubkey, amount) {
+      try {
+        const mint = new PublicKey(mintAddress);
+        const user = wallet.publicKey;
 
-    if (window.solana && window.solana.isConnected) {
-      window.solana.connect().then((resp) => {
-        wallet = resp;
-        connectedAddress = wallet.publicKey.toString();
-        renderConnectedDropdown();
-      });
+        const tx = new Transaction().add(
+          splToken.burn({
+            account: tokenAccountPubkey,
+            mint,
+            owner: user,
+            amount: BigInt(Math.floor(amount)), // Must be BigInt
+          })
+        );
+
+        const { blockhash } = await connection.getLatestBlockhash();
+        tx.recentBlockhash = blockhash;
+        tx.feePayer = user;
+
+        const signed = await wallet.signTransaction(tx);
+        const sig = await connection.sendRawTransaction(signed.serialize());
+        await connection.confirmTransaction(sig);
+        alert("Token burned: " + sig);
+        fetchTokenAccounts();
+      } catch (err) {
+        console.error(err);
+        alert("Failed to burn token: " + err.message);
+      }
+    }
+
+    async function closeTokenAccount(tokenAccountPubkey) {
+      try {
+        const user = wallet.publicKey;
+
+        const tx = new Transaction().add(
+          splToken.closeAccount({
+            source: tokenAccountPubkey,
+            destination: user,
+            owner: user,
+          })
+        );
+
+        const { blockhash } = await connection.getLatestBlockhash();
+        tx.recentBlockhash = blockhash;
+        tx.feePayer = user;
+
+        const signed = await wallet.signTransaction(tx);
+        const sig = await connection.sendRawTransaction(signed.serialize());
+        await connection.confirmTransaction(sig);
+        alert("Closed token account: " + sig);
+        fetchTokenAccounts();
+      } catch (err) {
+        console.error(err);
+        alert("Failed to close account: " + err.message);
+      }
     }
   </script>
 </body>
