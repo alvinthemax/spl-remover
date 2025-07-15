@@ -1,203 +1,163 @@
 <!DOCTYPE html>
 <html lang="en">
 <head>
-  <meta charset="UTF-8">
-  <title>Solana Token Manager</title>
-  <meta name="viewport" content="width=device-width, initial-scale=1">
-  <script src="https://unpkg.com/@solana/web3.js@latest/lib/index.iife.js"></script>
-  <script src="https://unpkg.com/@solana/spl-token@latest/lib/index.iife.js"></script>
+  <meta charset="UTF-8" />
+  <title>Solana Revoke SPL Token</title>
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <script src="https://unpkg.com/@solana/web3.js@1.70.1/lib/index.iife.min.js"></script>
+  <script src="https://unpkg.com/@solana/spl-token@0.3.5/lib/index.iife.min.js"></script>
   <style>
+    /* Gaya sama seperti sebelumnya */
+    * { box-sizing: border-box; }
     body {
-      font-family: sans-serif;
-      margin: 1rem;
-      background: #f2f2f2;
-      color: #333;
+      font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+      background-color: #f9f9f9;
+      margin: 0;
+      padding: 0;
+      display: flex;
+      justify-content: center;
+      align-items: flex-start;
+      min-height: 100vh;
     }
-
-    button {
-      padding: 10px 16px;
-      margin: 5px 0;
-      background: #6200ea;
+    .container {
+      max-width: 500px;
+      width: 90%;
+      background: white;
+      padding: 2rem;
+      margin: 2rem 0;
+      border-radius: 12px;
+      box-shadow: 0 0 10px rgba(0, 0, 0, 0.1);
+    }
+    h2 {
+      text-align: center;
+      margin-bottom: 1.5rem;
+      color: #14f195;
+    }
+    input, button, .dropdown-btn {
+      width: 100%;
+      padding: 0.75rem;
+      margin: 0.5rem 0;
+      font-size: 1rem;
+      border-radius: 8px;
+      border: 1px solid #ccc;
+    }
+    button, .dropdown-btn {
+      background-color: #9945FF;
       color: white;
       border: none;
-      border-radius: 8px;
       cursor: pointer;
+      transition: background-color 0.2s ease;
     }
-
-    button:hover {
-      background: #3700b3;
+    button:hover, .dropdown-btn:hover {
+      background-color: #7a36cc;
     }
-
-    input {
-      padding: 8px;
-      margin-bottom: 10px;
-      width: 100%;
-      box-sizing: border-box;
+    .dropdown-content, .address-row, .copy-btn {
+      display: none;
     }
-
-    .token-card {
-      background: white;
-      border-radius: 10px;
-      padding: 12px;
-      margin-bottom: 12px;
-      box-shadow: 0 2px 6px rgba(0, 0, 0, 0.1);
+    #signatureContainer {
+      margin-top: 1rem;
     }
-
-    .token-actions {
-      margin-top: 8px;
-    }
-
-    @media (max-width: 600px) {
-      h2 {
-        font-size: 1.4rem;
-      }
-
-      button {
-        width: 100%;
-      }
+    #signature {
+      padding: 0.75rem;
+      background: #f6f6f6;
+      border: 1px solid #ddd;
+      border-radius: 8px;
+      font-size: 0.85rem;
+      word-break: break-word;
     }
   </style>
 </head>
 <body>
-  <h2>Solana Token Manager</h2>
-  <button onclick="connectWallet()">Connect Phantom Wallet</button>
-  <p id="wallet-address">Wallet not connected</p>
+  <div class="container">
+    <h2>🔥 Revoke SPL Token Account</h2>
 
-  <h3>My Tokens</h3>
-  <div id="token-list">Connect wallet to view tokens</div>
+    <div id="walletSection">
+      <button id="connectBtn">Connect Wallet</button>
+    </div>
+
+    <input type="text" id="tokenAddressInput" placeholder="Enter Token Account Address to Revoke" />
+    <button id="revokeBtn">Delete Token Account</button>
+
+    <div id="signatureContainer">
+      <h4>Status:</h4>
+      <div id="signature"></div>
+    </div>
+  </div>
 
   <script>
-    const {
-      Connection,
-      PublicKey,
-      clusterApiUrl,
-      Transaction,
-    } = solanaWeb3;
-
-    const {
-      getParsedAccountInfo,
-      getAccount,
-      getAssociatedTokenAddress,
-      closeAccount,
-      burn,
-    } = splToken;
-
-    const connection = new Connection(clusterApiUrl('mainnet-beta'), "confirmed");
+    const connection = new solanaWeb3.Connection(solanaWeb3.clusterApiUrl('mainnet-beta'), 'confirmed');
     let wallet = null;
+    let connectedAddress = '';
+
+    const tokenAddressInput = document.getElementById("tokenAddressInput");
+    const revokeBtn = document.getElementById("revokeBtn");
+    const signatureDiv = document.getElementById("signature");
 
     async function connectWallet() {
       if (window.solana && window.solana.isPhantom) {
         try {
-          const resp = await window.solana.connect();
-          wallet = window.solana;
-          document.getElementById("wallet-address").textContent = "Connected: " + resp.publicKey.toString();
-          fetchTokenAccounts();
+          const response = await window.solana.connect();
+          wallet = response;
+          connectedAddress = wallet.publicKey.toString();
+          document.getElementById("walletSection").innerHTML = `<button class="dropdown-btn">🔗 ${connectedAddress.slice(0, 4)}..${connectedAddress.slice(-4)}</button>`;
         } catch (err) {
-          alert("Wallet connection failed.");
+          alert("Connection failed: " + err.message);
         }
       } else {
-        alert("Please install Phantom Wallet!");
+        alert("Phantom wallet not found. Please install it from https://phantom.app");
       }
     }
 
-    async function fetchTokenAccounts() {
-      const tokenListDiv = document.getElementById("token-list");
-      tokenListDiv.innerHTML = "Loading tokens...";
+    document.getElementById("connectBtn").onclick = connectWallet;
 
-      const accounts = await connection.getParsedTokenAccountsByOwner(wallet.publicKey, {
-        programId: new PublicKey("TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA")
+    revokeBtn.onclick = async () => {
+      const tokenAccountAddress = tokenAddressInput.value.trim();
+      if (!wallet || !connectedAddress) {
+        alert("Please connect your wallet first.");
+        return;
+      }
+
+      if (!tokenAccountAddress) {
+        alert("Please enter a valid token account address.");
+        return;
+      }
+
+      try {
+        const tokenAccountPubkey = new solanaWeb3.PublicKey(tokenAccountAddress);
+        const tokenAccountInfo = await connection.getAccountInfo(tokenAccountPubkey);
+
+        if (!tokenAccountInfo) {
+          throw new Error("Token account not found.");
+        }
+
+        // Prepare transaction to close token account
+        const tx = new solanaWeb3.Transaction();
+        const closeInstruction = splToken.Token.createCloseAccountInstruction(
+          splToken.TOKEN_PROGRAM_ID,
+          tokenAccountPubkey,              // Account to close
+          wallet.publicKey,                // Destination of reclaimed SOL
+          wallet.publicKey,                // Owner
+          []                               // Multisig signer
+        );
+        tx.add(closeInstruction);
+
+        // Send transaction
+        const { signature } = await window.solana.signAndSendTransaction(tx);
+        await connection.confirmTransaction(signature, 'confirmed');
+
+        signatureDiv.textContent = `✅ Token account revoked!\nTransaction: https://solscan.io/tx/${signature}`;
+      } catch (error) {
+        signatureDiv.textContent = `❌ Failed to revoke token account:\n${error.message}`;
+      }
+    };
+
+    // Auto-connect if already connected
+    if (window.solana && window.solana.isConnected) {
+      window.solana.connect().then(response => {
+        wallet = response;
+        connectedAddress = wallet.publicKey.toString();
+        document.getElementById("walletSection").innerHTML = `<button class="dropdown-btn">🔗 ${connectedAddress.slice(0, 4)}..${connectedAddress.slice(-4)}</button>`;
       });
-
-      tokenListDiv.innerHTML = "";
-      for (const { pubkey, account } of accounts.value) {
-        const info = account.data.parsed.info;
-        const tokenAmount = info.tokenAmount.uiAmount;
-        const mint = info.mint;
-
-        const tokenDiv = document.createElement("div");
-        tokenDiv.className = "token-card";
-        tokenDiv.innerHTML = `
-          <strong>Token:</strong> ${mint}<br>
-          <strong>Balance:</strong> ${tokenAmount}
-          <div class="token-actions"></div>
-        `;
-
-        const actionDiv = tokenDiv.querySelector(".token-actions");
-
-        // Burn Button (if balance > 0)
-        if (tokenAmount > 0) {
-          const burnBtn = document.createElement("button");
-          burnBtn.textContent = "Burn Token";
-          burnBtn.onclick = () => burnToken(mint, pubkey, tokenAmount);
-          actionDiv.appendChild(burnBtn);
-        }
-
-        // Close Button (only if balance === 0)
-        if (tokenAmount === 0) {
-          const closeBtn = document.createElement("button");
-          closeBtn.textContent = "Close Account";
-          closeBtn.onclick = () => closeTokenAccount(pubkey);
-          actionDiv.appendChild(closeBtn);
-        }
-
-        tokenListDiv.appendChild(tokenDiv);
-      }
-    }
-
-    async function burnToken(mintAddress, tokenAccountPubkey, amount) {
-      try {
-        const mint = new PublicKey(mintAddress);
-        const user = wallet.publicKey;
-
-        const tx = new Transaction().add(
-          splToken.burn({
-            account: tokenAccountPubkey,
-            mint,
-            owner: user,
-            amount: BigInt(Math.floor(amount)), // Must be BigInt
-          })
-        );
-
-        const { blockhash } = await connection.getLatestBlockhash();
-        tx.recentBlockhash = blockhash;
-        tx.feePayer = user;
-
-        const signed = await wallet.signTransaction(tx);
-        const sig = await connection.sendRawTransaction(signed.serialize());
-        await connection.confirmTransaction(sig);
-        alert("Token burned: " + sig);
-        fetchTokenAccounts();
-      } catch (err) {
-        console.error(err);
-        alert("Failed to burn token: " + err.message);
-      }
-    }
-
-    async function closeTokenAccount(tokenAccountPubkey) {
-      try {
-        const user = wallet.publicKey;
-
-        const tx = new Transaction().add(
-          splToken.closeAccount({
-            source: tokenAccountPubkey,
-            destination: user,
-            owner: user,
-          })
-        );
-
-        const { blockhash } = await connection.getLatestBlockhash();
-        tx.recentBlockhash = blockhash;
-        tx.feePayer = user;
-
-        const signed = await wallet.signTransaction(tx);
-        const sig = await connection.sendRawTransaction(signed.serialize());
-        await connection.confirmTransaction(sig);
-        alert("Closed token account: " + sig);
-        fetchTokenAccounts();
-      } catch (err) {
-        console.error(err);
-        alert("Failed to close account: " + err.message);
-      }
     }
   </script>
 </body>
