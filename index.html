@@ -1,0 +1,69 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <title>Solana Token Tool</title>
+  <script src="https://unpkg.com/@solana/web3.js@latest/lib/index.iife.js"></script>
+  <script src="https://unpkg.com/@solana/spl-token@latest/lib/index.iife.js"></script>
+</head>
+<body>
+  <h2>Solana Token Manager</h2>
+  <button onclick="connectWallet()">Connect Wallet</button>
+  <p id="wallet-address">Wallet not connected</p>
+
+  <h3>Revoke Token (Close Token Account)</h3>
+  <input type="text" id="tokenAddress" placeholder="Token mint address">
+  <button onclick="revokeToken()">Revoke (Close)</button>
+
+  <script>
+    const { Connection, clusterApiUrl, PublicKey, Transaction, sendAndConfirmTransaction } = solanaWeb3;
+    const { getAssociatedTokenAddress, closeAccount } = splToken;
+
+    let wallet = null;
+    const connection = new Connection(clusterApiUrl('mainnet-beta'));
+
+    async function connectWallet() {
+      if (window.solana && window.solana.isPhantom) {
+        try {
+          const response = await window.solana.connect();
+          wallet = window.solana;
+          document.getElementById("wallet-address").textContent = "Connected: " + response.publicKey.toString();
+        } catch (err) {
+          alert("Failed to connect wallet: " + err.message);
+        }
+      } else {
+        alert("Phantom Wallet not found!");
+      }
+    }
+
+    async function revokeToken() {
+      if (!wallet) return alert("Connect wallet first!");
+
+      const mintAddressStr = document.getElementById("tokenAddress").value;
+      if (!mintAddressStr) return alert("Enter token address");
+
+      try {
+        const mint = new PublicKey(mintAddressStr);
+        const userPublicKey = wallet.publicKey;
+
+        const ata = await getAssociatedTokenAddress(mint, userPublicKey);
+
+        const transaction = new Transaction().add(
+          closeAccount({
+            source: ata,
+            owner: userPublicKey,
+            destination: userPublicKey
+          })
+        );
+
+        const txSig = await wallet.signAndSendTransaction(transaction);
+        await connection.confirmTransaction(txSig);
+        alert("Token account closed successfully: " + txSig);
+      } catch (err) {
+        console.error(err);
+        alert("Error: " + err.message);
+      }
+    }
+  </script>
+</body>
+</html>
