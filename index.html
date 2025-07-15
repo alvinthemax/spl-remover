@@ -2,66 +2,181 @@
 <html lang="en">
 <head>
   <meta charset="UTF-8">
-  <title>Solana Token Tool</title>
+  <title>Solana Token Manager</title>
+  <meta name="viewport" content="width=device-width, initial-scale=1">
   <script src="https://unpkg.com/@solana/web3.js@latest/lib/index.iife.js"></script>
   <script src="https://unpkg.com/@solana/spl-token@latest/lib/index.iife.js"></script>
+  <style>
+    body {
+      font-family: sans-serif;
+      margin: 1rem;
+      background: #f2f2f2;
+      color: #333;
+    }
+
+    button {
+      padding: 10px 16px;
+      margin: 5px 0;
+      background: #6200ea;
+      color: white;
+      border: none;
+      border-radius: 8px;
+      cursor: pointer;
+    }
+
+    button:hover {
+      background: #3700b3;
+    }
+
+    input {
+      padding: 8px;
+      margin-bottom: 10px;
+      width: 100%;
+      box-sizing: border-box;
+    }
+
+    .token-card {
+      background: white;
+      border-radius: 10px;
+      padding: 12px;
+      margin-bottom: 12px;
+      box-shadow: 0 2px 6px rgba(0, 0, 0, 0.1);
+    }
+
+    .token-actions {
+      margin-top: 8px;
+    }
+
+    @media (max-width: 600px) {
+      h2 {
+        font-size: 1.4rem;
+      }
+
+      button {
+        width: 100%;
+      }
+    }
+  </style>
 </head>
 <body>
   <h2>Solana Token Manager</h2>
-  <button onclick="connectWallet()">Connect Wallet</button>
+  <button onclick="connectWallet()">Connect Phantom Wallet</button>
   <p id="wallet-address">Wallet not connected</p>
 
-  <h3>Revoke Token (Close Token Account)</h3>
-  <input type="text" id="tokenAddress" placeholder="Token mint address">
-  <button onclick="revokeToken()">Revoke (Close)</button>
+  <h3>My Tokens</h3>
+  <div id="token-list">Connect wallet to view tokens</div>
 
   <script>
-    const { Connection, clusterApiUrl, PublicKey, Transaction, sendAndConfirmTransaction } = solanaWeb3;
-    const { getAssociatedTokenAddress, closeAccount } = splToken;
+    const { Connection, PublicKey, clusterApiUrl, Transaction, sendAndConfirmTransaction } = solanaWeb3;
+    const {
+      getAccount,
+      getAssociatedTokenAddress,
+      closeAccount,
+      burn,
+    } = splToken;
 
+    let connection = new Connection(clusterApiUrl('mainnet-beta'), "confirmed");
     let wallet = null;
-    const connection = new Connection(clusterApiUrl('mainnet-beta'));
 
     async function connectWallet() {
       if (window.solana && window.solana.isPhantom) {
         try {
-          const response = await window.solana.connect();
+          const resp = await window.solana.connect();
           wallet = window.solana;
-          document.getElementById("wallet-address").textContent = "Connected: " + response.publicKey.toString();
+          document.getElementById("wallet-address").textContent = "Connected: " + resp.publicKey.toString();
+          fetchTokenAccounts();
         } catch (err) {
-          alert("Failed to connect wallet: " + err.message);
+          alert("Wallet connection failed.");
         }
       } else {
-        alert("Phantom Wallet not found!");
+        alert("Please install Phantom Wallet!");
       }
     }
 
-    async function revokeToken() {
-      if (!wallet) return alert("Connect wallet first!");
+    async function fetchTokenAccounts() {
+      const tokenListDiv = document.getElementById("token-list");
+      tokenListDiv.innerHTML = "Loading tokens...";
 
-      const mintAddressStr = document.getElementById("tokenAddress").value;
-      if (!mintAddressStr) return alert("Enter token address");
+      const accounts = await connection.getParsedTokenAccountsByOwner(wallet.publicKey, {
+        programId: new PublicKey("TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA")
+      });
 
+      tokenListDiv.innerHTML = "";
+      accounts.value.forEach(async ({ pubkey, account }) => {
+        const info = account.data.parsed.info;
+        const tokenAmount = info.tokenAmount.uiAmount;
+        const mint = info.mint;
+
+        const tokenDiv = document.createElement("div");
+        tokenDiv.className = "token-card";
+        tokenDiv.innerHTML = `
+          <strong>Token:</strong> ${mint}<br>
+          <strong>Balance:</strong> ${tokenAmount}
+          <div class="token-actions"></div>
+        `;
+
+        const actionDiv = tokenDiv.querySelector(".token-actions");
+
+        // Burn Button (if balance > 0)
+        if (tokenAmount > 0) {
+          const burnBtn = document.createElement("button");
+          burnBtn.textContent = "Burn Token";
+          burnBtn.onclick = () => burnToken(mint, pubkey, tokenAmount);
+          actionDiv.appendChild(burnBtn);
+        }
+
+        // Close Button (only if balance === 0)
+        if (tokenAmount === 0) {
+          const closeBtn = document.createElement("button");
+          closeBtn.textContent = "Close Account";
+          closeBtn.onclick = () => closeTokenAccount(pubkey);
+          actionDiv.appendChild(closeBtn);
+        }
+
+        tokenListDiv.appendChild(tokenDiv);
+      });
+    }
+
+    async function burnToken(mintAddress, tokenAccountPubkey, amount) {
       try {
-        const mint = new PublicKey(mintAddressStr);
-        const userPublicKey = wallet.publicKey;
+        const mint = new PublicKey(mintAddress);
+        const user = wallet.publicKey;
 
-        const ata = await getAssociatedTokenAddress(mint, userPublicKey);
-
-        const transaction = new Transaction().add(
-          closeAccount({
-            source: ata,
-            owner: userPublicKey,
-            destination: userPublicKey
+        const tx = new Transaction().add(
+          burn({
+            mint,
+            owner: user,
+            account: tokenAccountPubkey,
+            amount: BigInt(Math.floor(amount)), // Must be BigInt
           })
         );
 
-        const txSig = await wallet.signAndSendTransaction(transaction);
-        await connection.confirmTransaction(txSig);
-        alert("Token account closed successfully: " + txSig);
+        const signature = await wallet.signAndSendTransaction(tx);
+        await connection.confirmTransaction(signature);
+        alert("Burned token: " + signature);
+        fetchTokenAccounts();
       } catch (err) {
         console.error(err);
-        alert("Error: " + err.message);
+        alert("Failed to burn token: " + err.message);
+      }
+    }
+
+    async function closeTokenAccount(tokenAccountPubkey) {
+      try {
+        const tx = new Transaction().add(
+          closeAccount({
+            source: tokenAccountPubkey,
+            destination: wallet.publicKey,
+            owner: wallet.publicKey
+          })
+        );
+        const signature = await wallet.signAndSendTransaction(tx);
+        await connection.confirmTransaction(signature);
+        alert("Closed token account: " + signature);
+        fetchTokenAccounts();
+      } catch (err) {
+        console.error(err);
+        alert("Failed to close account: " + err.message);
       }
     }
   </script>
