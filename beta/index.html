@@ -1,0 +1,73 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+  <title>Connect Wallet</title>
+  <style>
+    body {
+      font-family: sans-serif;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      padding-top: 50px;
+    }
+
+    #connectButton {
+      padding: 10px 20px;
+      background-color: #6366f1;
+      color: white;
+      border: none;
+      border-radius: 8px;
+      cursor: pointer;
+      font-size: 16px;
+    }
+
+    #walletAddress {
+      margin-top: 20px;
+      font-weight: bold;
+      color: #333;
+    }
+  </style>
+</head>
+<body>
+
+  <h1>Solana Wallet Connect</h1>
+  <button id="connectButton">Connect Wallet</button>
+  <div id="walletAddress"></div>
+
+  <script>
+    const connectButton = document.getElementById("connectButton");
+    const walletAddress = document.getElementById("walletAddress");
+
+    const isPhantomInstalled = window.solana && window.solana.isPhantom;
+
+    if (!isPhantomInstalled) {
+      connectButton.disabled = true;
+      connectButton.innerText = "Phantom Not Installed";
+    }
+
+    connectButton.addEventListener("click", async () => {
+      try {
+        const resp = await window.solana.connect();
+        walletAddress.innerText = "Connected: " + resp.publicKey.toString();
+      } catch (err) {
+        console.error("Wallet connection failed:", err);
+      }
+    });
+
+    // Auto-connect if already approved
+    window.addEventListener("load", async () => {
+      if (window.solana && window.solana.isPhantom) {
+        try {
+          const resp = await window.solana.connect({ onlyIfTrusted: true });
+          walletAddress.innerText = "Connected: " + resp.publicKey.toString();
+        } catch (_) {
+          // Ignore silently
+        }
+      }
+    });
+  </script>
+
+</body>
+</html>
